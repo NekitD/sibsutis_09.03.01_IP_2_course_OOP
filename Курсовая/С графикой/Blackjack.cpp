@@ -1,0 +1,1524 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <ctime>
+#include <SFML/Graphics.hpp>
+#include <SFML/Window.hpp>
+#include <SFML/OpenGL.hpp>
+#include <SFML/Audio.hpp>
+#include <sstream>
+
+using namespace std;
+
+
+bool deckHas = true;
+bool offerHit = false;
+bool isHitting = false;
+bool givingCards = false;
+bool playerBusted = false;
+
+
+
+//---------------------------------------------------------------------------------------------------
+class Card
+{
+public:
+    enum rank
+    {
+        ACE = 1,
+        TWO,
+        THREE,
+        FOUR,
+        FIVE,
+        SIX,
+        SEVEN,
+        EIGHT,
+        NINE,
+        TEN,
+        JACK,
+        QUEEN,
+        KING
+    };
+    enum suit
+    {
+        CLUBS,
+        DIAMONDS,
+        HEARTS,
+        SPADES
+    };
+//    friend ostream &operator<<(ostream &os, const Card &aCard);
+    Card& operator=(const Card &other);
+    Card(rank r = ACE, suit s = SPADES, bool ifu = true);
+    int getValue() const;
+    int getRank() const;
+    int getSuit() const;
+    bool getFace() const;
+    void Flip();
+
+private:
+    rank m_Rank;
+    suit m_Suit;
+    bool m_IsFaceUp;
+};
+
+Card::Card(rank r, suit s, bool ifu) : m_Rank(r), m_Suit(s), m_IsFaceUp(ifu) {}
+
+int Card::getRank() const
+{
+    return m_Rank;
+}
+
+int Card::getSuit() const
+{
+    return m_Suit;
+}
+
+bool Card::getFace() const
+{
+    return m_IsFaceUp;
+}
+
+
+int Card::getValue() const
+{
+    int value = 0;
+    if (m_IsFaceUp)
+    {
+        value = m_Rank;
+        if (value > 10)
+        {
+            value = 10;
+        }
+    }
+    return value;
+}
+
+void Card::Flip()
+{
+    m_IsFaceUp = !(m_IsFaceUp);
+}
+
+Card& Card::operator=(const Card &other)
+{
+    if (this != &other)
+    {
+        m_Rank = other.m_Rank;
+        m_Suit = other.m_Suit;
+        m_IsFaceUp = other.m_IsFaceUp;
+    }
+    return *this;
+}
+
+Card theGivenCard;
+Card theFirstHouse;
+
+//------------------------------------------------------------------------------------------------------------
+
+class Hand
+{
+public:
+    Hand();
+    virtual ~Hand();
+    void Add(Card *pCard);
+    void Clear();
+    int getTotal() const;
+
+protected:
+    vector<Card *> m_Cards;
+};
+
+Hand::Hand()
+{
+    m_Cards.reserve(7);
+}
+
+Hand::~Hand()
+{
+    Clear();
+}
+
+void Hand::Add(Card *pCard)
+{
+	givingCards = true;
+	theGivenCard = *pCard;
+    m_Cards.push_back(pCard);
+}
+
+void Hand::Clear()
+{
+    vector<Card *>::iterator iter = m_Cards.begin();
+    for (iter = m_Cards.begin(); iter != m_Cards.end(); ++iter)
+    {
+        delete *iter;
+        *iter = 0;
+    }
+    m_Cards.clear();
+}
+
+int Hand::getTotal() const
+{
+    if (m_Cards.empty())
+    {
+        return 0;
+    }
+    if (m_Cards[0]->getValue() == 0)
+    {
+        return 0;
+    }
+    int total = 0;
+    vector<Card *>::const_iterator iter;
+    for (iter = m_Cards.begin(); iter != m_Cards.end(); ++iter)
+    {
+        total += (*iter)->getValue();
+    }
+    bool containAce = false;
+    for (iter = m_Cards.begin(); iter != m_Cards.end(); ++iter)
+    {
+        if ((*iter)->getValue() == Card::ACE)
+        {
+            containAce = true;
+        }
+    }
+    if (containAce && total <= 11)
+    {
+        total += 10;
+    }
+    return total;
+}
+
+//----------------------------------------------------------------------------------------------------------------
+
+class GenericPlayer : public Hand
+{
+//    friend ostream &operator<<(ostream &os, const GenericPlayer &aGenericPlayer);
+
+public:
+    GenericPlayer(const string &name = "");
+    virtual ~GenericPlayer();
+    virtual bool IsHitting() const = 0;
+    bool IsBusted() const;
+
+protected:
+    string m_Name;
+};
+
+GenericPlayer::GenericPlayer(const string &name) : m_Name(name) {}
+
+GenericPlayer::~GenericPlayer() {}
+
+bool GenericPlayer::IsBusted() const
+{
+    return (getTotal() > 21);
+}
+
+
+//-------------------------------------------------------------------------------------------------------------------------------------
+
+class Player : public GenericPlayer
+{
+public:
+    Player(const string &name = "");
+    virtual ~Player();
+    virtual bool IsHitting() const;
+//    void Win() const;
+//    void Lose() const;
+//    void Push() const;
+};
+
+Player::Player(const string &name) : GenericPlayer(name) {}
+
+Player::~Player() {}
+
+bool Player::IsHitting() const
+{
+//    cout << m_Name << ", do you want a hit? (Y/N): ";
+//    char response;
+//    cin >> response;
+//    return (response == 'y' || response == 'Y');
+	return isHitting;
+}
+
+//void Player::Win() const
+//{
+//    cout << m_Name << " wins.\n";
+//}
+//
+//void Player::Lose() const
+//{
+//    cout << m_Name << " loses.\n";
+//}
+//
+int hc = 0;
+//void Player::Push() const
+//{
+//    cout << m_Name << " pushes.\n";
+//}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+
+class House : public GenericPlayer
+{
+public:
+    House(const string &name = "House");
+    virtual ~House();
+    virtual bool IsHitting() const;
+    void FlipFirstCard();
+};
+
+House::House(const string &name) : GenericPlayer(name) {}
+
+House::~House() {}
+
+bool House::IsHitting() const
+{
+    return (getTotal() <= 16);
+}
+
+void House::FlipFirstCard()
+{
+    if (!(m_Cards.empty()))
+    {
+    	theFirstHouse = *(m_Cards[0]);
+        m_Cards[0]->Flip();
+        theGivenCard = *(m_Cards[0]);
+    }
+    else
+    {
+//        cout << "No card to flip!" << endl;
+    }
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------
+
+class Deck : public Hand
+{
+public:
+    Deck();
+    virtual ~Deck();
+    void Populate();
+    void Shuffle();
+    void Deal(Hand &aHand);
+    void AdditionalCards(GenericPlayer &aGenericPlayer);
+};
+
+Deck::Deck()
+{
+    m_Cards.reserve(52);
+    Populate();
+}
+
+Deck::~Deck() {}
+
+void Deck::Populate()
+{
+    Clear();
+    for (int s = Card::CLUBS; s <= Card::SPADES; ++s)
+    {
+        for (int r = Card::ACE; r <= Card::KING; ++r)
+        {
+            Add(new Card(static_cast<Card::rank>(r), static_cast<Card::suit>(s)));
+        }
+    }
+}
+
+void Deck::Shuffle()
+{
+    random_shuffle(m_Cards.begin(), m_Cards.end());
+}
+
+
+void Deck::Deal(Hand &aHand)
+{
+    if (!m_Cards.empty())
+    {
+        aHand.Add(m_Cards.back());
+        m_Cards.pop_back();
+        if(m_Cards.empty()){
+        	deckHas = false;
+		}
+    }
+    else
+    {
+        //cout << "Out of cards. Unable to deal" << endl;
+    }
+}
+
+void Deck::AdditionalCards(GenericPlayer &aGenericPlayer)
+{
+//    cout << endl;
+    if (!(aGenericPlayer.IsBusted()) && aGenericPlayer.IsHitting())
+    {
+        Deal(aGenericPlayer);
+//        //cout << aGenericPlayer << endl;
+        if (aGenericPlayer.IsBusted())
+        {
+            playerBusted = true;
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+
+using namespace sf;
+
+const int bHx = 200, hInterval = 130, Hy = 600, xbHo = 920, yHo = -10, tableX = 10, tableBy = 5, tInterval = 60;
+
+
+int main()
+{
+	
+	
+	RenderWindow window(sf::VideoMode(1200, 780),"Blackjack");
+	window.display();
+	
+	Font font;
+	if (!font.loadFromFile("arial.ttf")){
+		std::cout << "ERROR. Arial didn't load." << std::endl;
+	}
+	
+	//-------------------------------------------------------------------------------------------------------------
+	Text title;
+	title.setFont(font);
+	title.setCharacterSize(100);
+	title.setFillColor(Color::Yellow);
+	title.setStyle(Text::Bold);
+	title.setPosition(395, 100);
+	title.setString("Blackjack");
+	
+	Text choseOffer;
+	choseOffer.setFont(font);
+	choseOffer.setCharacterSize(50);
+	choseOffer.setFillColor(Color::Green);
+	choseOffer.setStyle(Text::Bold);
+	choseOffer.setPosition(315, 250);
+	choseOffer.setString("Chose number of players");
+	
+	Text one;
+	one.setFont(font);
+	one.setCharacterSize(150);
+	one.setFillColor(Color::White);
+	one.setStyle(Text::Bold);
+	one.setPosition(145 - one.getGlobalBounds().width / 2, 350);
+	one.setString("1");
+	
+	Text two;
+	two.setFont(font);
+	two.setCharacterSize(150);
+	two.setFillColor(Color::White);
+	two.setStyle(Text::Bold);
+	two.setPosition(280 - two.getGlobalBounds().width / 2, 350);
+	two.setString("2");
+	
+	Text three;
+	three.setFont(font);
+	three.setCharacterSize(150);
+	three.setFillColor(Color::White);
+	three.setStyle(Text::Bold);
+	three.setPosition(415 - three.getGlobalBounds().width / 2, 350);
+	three.setString("3");
+	
+	Text four;
+	four.setFont(font);
+	four.setCharacterSize(150);
+	four.setFillColor(Color::White);
+	four.setStyle(Text::Bold);
+	four.setPosition(550 - four.getGlobalBounds().width / 2, 350);
+	four.setString("4");
+	
+	Text five;
+	five.setFont(font);
+	five.setCharacterSize(150);
+	five.setFillColor(Color::White);
+	five.setStyle(Text::Bold);
+	five.setPosition(685 - five.getGlobalBounds().width / 2, 350);
+	five.setString("5");
+	
+	Text six;
+	six.setFont(font);
+	six.setCharacterSize(150);
+	six.setFillColor(Color::White);
+	six.setStyle(Text::Bold);
+	six.setPosition(820 - six.getGlobalBounds().width / 2, 350);
+	six.setString("6");
+	
+	Text seven;
+	seven.setFont(font);
+	seven.setCharacterSize(150);
+	seven.setFillColor(Color::White);
+	seven.setStyle(Text::Bold);
+	seven.setPosition(955 - seven.getGlobalBounds().width / 2, 350);
+	seven.setString("7");
+	
+	Text nameOffer;
+	nameOffer.setFont(font);
+	nameOffer.setCharacterSize(50);
+	nameOffer.setFillColor(Color::Green);
+	nameOffer.setStyle(Text::Bold);
+	nameOffer.setPosition(330, 250);
+	nameOffer.setString("Enter name of player ");
+	bool digitAdded = false;
+	
+	Text nameAccept;
+	nameAccept.setFont(font);
+	nameAccept.setCharacterSize(70);
+	nameAccept.setFillColor(Color::White);
+	nameAccept.setStyle(Text::Bold);
+	nameAccept.setPosition(315 - six.getGlobalBounds().width / 2, 550);
+	nameAccept.setString("Accept");
+	
+	Text nameClear;
+	nameClear.setFont(font);
+	nameClear.setCharacterSize(70);
+	nameClear.setFillColor(Color::White);
+	nameClear.setStyle(Text::Bold);
+	nameClear.setPosition(655 - six.getGlobalBounds().width / 2, 550);
+	nameClear.setString("Clear");
+
+	
+	Text Name;
+	Name.setFont(font);
+	Name.setCharacterSize(50);
+	Name.setFillColor(Color::White);
+	Name.setStyle(Text::Bold);
+	Name.setPosition(330, 390);
+	
+	string drawningString;
+	
+	Vertex line[] =
+	{
+    	sf::Vertex(sf::Vector2f(330, 450)),
+    	sf::Vertex(sf::Vector2f(830, 450))
+	};
+	
+	//------------------------------------------------------------------------------------------------------------
+	
+	Image Background;
+	Background.loadFromFile("Background.png"); 
+	Texture backgroundTexture;
+	backgroundTexture.loadFromImage(Background);
+	Sprite backgroundSprite;
+	backgroundSprite.setTexture(backgroundTexture);
+	backgroundSprite.setPosition(0, 0);
+	
+	Image DeckImage; 
+	DeckImage.loadFromFile("DECK.png");
+	Texture decktexture;
+	decktexture.loadFromImage(DeckImage);
+	RectangleShape DECK; // колода
+	DECK.setSize(Vector2f(180, 100));
+	DECK.setTexture(&decktexture);
+	DECK.setPosition(1050, 300);
+	
+	Image HandImage; 
+	HandImage.loadFromFile("HAND.png");
+	Texture handtexture;
+	handtexture.loadFromImage(HandImage);
+	RectangleShape HAND; 
+	HAND.setSize(Vector2f(1200, 500));
+	HAND.setTexture(&handtexture);
+	HAND.setPosition(0, 600);
+	
+	RectangleShape HOUSE; 
+	HOUSE.setSize(Vector2f(800, 170));
+	HOUSE.setTexture(&handtexture);
+	HOUSE.setPosition(750, 0);
+	
+	Text Hit;
+	Hit.setFont(font);
+	Hit.setCharacterSize(50);
+	Hit.setFillColor(Color::White);
+	Hit.setStyle(Text::Bold);
+	Hit.setPosition(80 - six.getGlobalBounds().width / 2, 660);
+	Hit.setString("Hit");
+	
+	Text Dont;
+	Dont.setFont(font);
+	Dont.setCharacterSize(50);
+	Dont.setFillColor(Color::White);
+	Dont.setStyle(Text::Bold);
+	Dont.setPosition(60 - six.getGlobalBounds().width / 2, 720);
+	Dont.setString("Don't");
+	
+	//-----------------------------------------------------------------Тексуры карт.
+	Image FaceDown; 
+	FaceDown.loadFromFile("cards/FaceDown.png");
+	Texture facedown;
+	facedown.loadFromImage(FaceDown);
+	
+	Image asset;
+	asset.loadFromFile("cards/Club2.png");
+	Texture Club2;
+	Club2.loadFromImage(asset);
+	asset.loadFromFile("cards/Club3.png");
+	Texture Club3;
+	Club3.loadFromImage(asset);
+	asset.loadFromFile("cards/Club4.png");
+	Texture Club4;
+	Club4.loadFromImage(asset);
+	asset.loadFromFile("cards/Club5.png");
+	Texture Club5;
+	Club5.loadFromImage(asset);
+	asset.loadFromFile("cards/Club6.png");
+	Texture Club6;
+	Club6.loadFromImage(asset);
+	asset.loadFromFile("cards/Club7.png");
+	Texture Club7;
+	Club7.loadFromImage(asset);
+	asset.loadFromFile("cards/Club8.png");
+	Texture Club8;
+	Club8.loadFromImage(asset);
+	asset.loadFromFile("cards/Club9.png");
+	Texture Club9;
+	Club9.loadFromImage(asset);
+	asset.loadFromFile("cards/Club10.png");
+	Texture Club10;
+	Club10.loadFromImage(asset);
+	asset.loadFromFile("cards/ClubAce.png");
+	Texture ClubAce;
+	ClubAce.loadFromImage(asset);
+	asset.loadFromFile("cards/ClubJack.png");
+	Texture ClubJack;
+	ClubJack.loadFromImage(asset);
+	asset.loadFromFile("cards/ClubKing.png");
+	Texture ClubKing;
+	ClubKing.loadFromImage(asset);
+	asset.loadFromFile("cards/ClubQueen.png");
+	Texture ClubQueen;
+	ClubQueen.loadFromImage(asset);
+	
+	asset.loadFromFile("cards/Diamond2.png");
+	Texture Diamond2;
+	Diamond2.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond3.png");
+	Texture Diamond3;
+	Diamond3.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond4.png");
+	Texture Diamond4;
+	Diamond4.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond5.png");
+	Texture Diamond5;
+	Diamond5.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond6.png");
+	Texture Diamond6;
+	Diamond6.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond7.png");
+	Texture Diamond7;
+	Diamond7.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond8.png");
+	Texture Diamond8;
+	Diamond8.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond9.png");
+	Texture Diamond9;
+	Diamond9.loadFromImage(asset);
+	asset.loadFromFile("cards/Diamond10.png");
+	Texture Diamond10;
+	Diamond10.loadFromImage(asset);
+	asset.loadFromFile("cards/DiamondAce.png");
+	Texture DiamondAce;
+	DiamondAce.loadFromImage(asset);
+	asset.loadFromFile("cards/DiamondJack.png");
+	Texture DiamondJack;
+	DiamondJack.loadFromImage(asset);
+	asset.loadFromFile("cards/DiamondKing.png");
+	Texture DiamondKing;
+	DiamondKing.loadFromImage(asset);
+	asset.loadFromFile("cards/DiamondQueen.png");
+	Texture DiamondQueen;
+	DiamondQueen.loadFromImage(asset);
+	
+	asset.loadFromFile("cards/Heart2.png");
+	Texture Heart2;
+	Heart2.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart3.png");
+	Texture Heart3;
+	Heart3.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart4.png");
+	Texture Heart4;
+	Heart4.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart5.png");
+	Texture Heart5;
+	Heart5.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart6.png");
+	Texture Heart6;
+	Heart6.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart7.png");
+	Texture Heart7;
+	Heart7.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart8.png");
+	Texture Heart8;
+	Heart8.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart9.png");
+	Texture Heart9;
+	Heart9.loadFromImage(asset);
+	asset.loadFromFile("cards/Heart10.png");
+	Texture Heart10;
+	Heart10.loadFromImage(asset);
+	asset.loadFromFile("cards/HeartAce.png");
+	Texture HeartAce;
+	HeartAce.loadFromImage(asset);
+	asset.loadFromFile("cards/HeartJack.png");
+	Texture HeartJack;
+	HeartJack.loadFromImage(asset);
+	asset.loadFromFile("cards/HeartKing.png");
+	Texture HeartKing;
+	HeartKing.loadFromImage(asset);
+	asset.loadFromFile("cards/HeartQueen.png");
+	Texture HeartQueen;
+	HeartQueen.loadFromImage(asset);
+	
+	asset.loadFromFile("cards/Spade2.png");
+	Texture Spade2;
+	Spade2.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade3.png");
+	Texture Spade3;
+	Spade3.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade4.png");
+	Texture Spade4;
+	Spade4.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade5.png");
+	Texture Spade5;
+	Spade5.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade6.png");
+	Texture Spade6;
+	Spade6.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade7.png");
+	Texture Spade7;
+	Spade7.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade8.png");
+	Texture Spade8;
+	Spade8.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade9.png");
+	Texture Spade9;
+	Spade9.loadFromImage(asset);
+	asset.loadFromFile("cards/Spade10.png");
+	Texture Spade10;
+	Spade10.loadFromImage(asset);
+	asset.loadFromFile("cards/SpadeAce.png");
+	Texture SpadeAce;
+	SpadeAce.loadFromImage(asset);
+	asset.loadFromFile("cards/SpadeJack.png");
+	Texture SpadeJack;
+	SpadeJack.loadFromImage(asset);
+	asset.loadFromFile("cards/SpadeKing.png");
+	Texture SpadeKing;
+	SpadeKing.loadFromImage(asset);
+	asset.loadFromFile("cards/SpadeQueen.png");
+	Texture SpadeQueen;
+	SpadeQueen.loadFromImage(asset);
+
+	
+	//----------------------------------------------------------------------Конец текстур карт.
+	
+	Text HouseName;
+	HouseName.setFont(font);
+	HouseName.setCharacterSize(50);
+	HouseName.setFillColor(Color::Yellow);
+	HouseName.setStyle(Text::Bold);
+	HouseName.setPosition(760, 50);
+	HouseName.setString("House");
+	
+
+	SoundBuffer click;
+	click.loadFromFile("click.wav");
+	
+	SoundBuffer take;
+	click.loadFromFile("Take.wav");
+	
+	SoundBuffer give;
+	click.loadFromFile("give.wav");
+	
+	Sound clickS;
+	clickS.setBuffer(click);
+	
+	Sound takeS;
+	takeS.setBuffer(take);
+	
+	Sound giveS;
+	giveS.setBuffer(give);
+	
+	//------------------------------------------------------------------------------------------------------------
+	bool choosingNum = true;
+	bool one_stop = false;
+	bool two_stop = false;
+	bool three_stop = false;
+	bool four_stop = false;
+	bool five_stop = false;
+	bool six_stop = false;
+	bool seven_stop = false;
+	//------------------------------------------------------------------
+	bool writingNames = false;
+	
+	int numPlayers = 0;
+	int currentName = 0;
+	
+	vector<string> names;
+	
+	bool acceptname_stop = false;
+	bool clearname_stop = false;
+	//------------------------------------------------------------------
+	bool gaming = false;
+	bool Initialized = false;
+	
+	bool dealing = false;
+	int dealed = 0;
+	bool begin = false;
+	
+	int handpose = bHx;
+	int posT = tableBy;
+	
+	Deck theDeck;
+	srand(time(NULL));
+	theDeck.Populate();
+	theDeck.Shuffle();	
+		
+	House theHouse;
+	
+	vector<Player> Players;
+	
+	bool hit_stop = false;
+	bool dont_stop = false;
+	
+	bool houseTurn = false;
+	bool gameover = false;
+	
+	vector<Text> Table;
+	vector<RectangleShape> handCards;
+	vector<RectangleShape> houseCards;
+	vector<vector<RectangleShape>> dealCards;
+	
+	//------------------------------------------------------------------
+	
+	while (window.isOpen()) {
+        
+		Event event;
+        
+        
+        while (window.pollEvent(event)){
+		
+			
+            if (event.type == Event::Closed){ // окно закрыто.
+                window.resetGLStates();
+                window.close();
+            }
+            
+            if (event.type == Event::MouseMoved) // мышь двинулась
+			{
+				Vector2i pos = Mouse::getPosition(window);
+				
+				if(choosingNum){
+					one_stop = one.getGlobalBounds().contains(pos.x, pos.y); // мышь наведена или нет на кнопку.
+					two_stop = two.getGlobalBounds().contains(pos.x, pos.y);
+					three_stop = three.getGlobalBounds().contains(pos.x, pos.y);			
+					four_stop = four.getGlobalBounds().contains(pos.x, pos.y);
+					five_stop = five.getGlobalBounds().contains(pos.x, pos.y);
+					six_stop = six.getGlobalBounds().contains(pos.x, pos.y);
+					seven_stop = seven.getGlobalBounds().contains(pos.x, pos.y);
+				}
+				
+				if(writingNames){
+					acceptname_stop = nameAccept.getGlobalBounds().contains(pos.x, pos.y);
+					clearname_stop = nameClear.getGlobalBounds().contains(pos.x, pos.y);
+				}
+				
+				if(gaming){
+					hit_stop = Hit.getGlobalBounds().contains(pos.x, pos.y);
+					dont_stop = Dont.getGlobalBounds().contains(pos.x, pos.y);
+				}
+			}
+			
+			if(one_stop){
+				one.setFillColor(Color::Red);
+			} else{
+				one.setFillColor(Color::White);
+			}
+			if(two_stop){
+				two.setFillColor(Color::Red);
+			} else{
+				two.setFillColor(Color::White);
+			}
+			if(three_stop){
+				three.setFillColor(Color::Red);
+			} else{
+				three.setFillColor(Color::White);
+			}
+			if(four_stop){
+				four.setFillColor(Color::Red);
+			} else{
+				four.setFillColor(Color::White);
+			}
+			if(five_stop){
+				five.setFillColor(Color::Red);
+			} else{
+				five.setFillColor(Color::White);
+			}
+			if(six_stop){
+				six.setFillColor(Color::Red);
+			} else{
+				six.setFillColor(Color::White);
+			}
+			if(seven_stop){
+				seven.setFillColor(Color::Red);
+			} else{
+				seven.setFillColor(Color::White);
+			}
+			
+			if(acceptname_stop){
+				nameAccept.setFillColor(Color::Red);
+			} else{
+				nameAccept.setFillColor(Color::White);
+			}
+			
+			if(clearname_stop){
+				nameClear.setFillColor(Color::Red);
+			} else{
+				nameClear.setFillColor(Color::White);
+			}
+			
+			if(hit_stop){
+				Hit.setFillColor(Color::Red);
+			} else{
+				Hit.setFillColor(Color::White);
+			}
+			
+			if(dont_stop){
+				Dont.setFillColor(Color::Red);
+			} else{
+				Dont.setFillColor(Color::White);
+			}
+			
+			if (event.type == Event::MouseButtonReleased) // кнопка мыши нажата.
+			{
+				if(choosingNum){
+				if(one_stop || two_stop || three_stop || four_stop || five_stop || six_stop || seven_stop){
+					clickS.play();
+					if(one_stop){
+						numPlayers = 1;
+					} else if(two_stop){
+						numPlayers = 2;
+					} else if(three_stop){
+						numPlayers = 3;
+					} else if(four_stop){
+						numPlayers = 4;
+					} else if(five_stop){
+						numPlayers = 5;
+					} else if(six_stop){
+						numPlayers = 6;
+					} else if(seven_stop){
+						numPlayers = 7;
+					}
+				choosingNum = false;
+				one_stop = false;
+				two_stop = false;
+				three_stop = false;
+				four_stop = false;
+				five_stop = false;
+				six_stop = false;
+				seven_stop = false;
+				writingNames = true;
+				}
+			}
+				
+				if(writingNames){
+					clickS.play();
+					if(clearname_stop){
+						drawningString.clear();
+						Name.setString(drawningString);
+					} else if(acceptname_stop){
+						if(!drawningString.empty()){
+						names.push_back(drawningString);
+						drawningString.clear();
+						Name.setString(drawningString);
+						if(currentName < numPlayers - 1){
+							nameOffer.setString("Enter name of player ");
+							currentName++;
+							digitAdded = false;
+						}else{
+								currentName = 0;
+								Name.setFillColor(Color::Green);
+								Name.setString(names[currentName]);
+								Name.setPosition(15, 600);
+								writingNames = false;
+								acceptname_stop = false;
+								clearname_stop = false;
+								gaming = true;
+							}
+						}
+					} 
+				}
+				
+				if(gaming){
+					if((hit_stop || dont_stop) && offerHit){
+						clickS.play();
+						offerHit = false;
+						if(hit_stop){ //-------------------------------------------кнопка взять карту.
+							isHitting = true;
+							theDeck.AdditionalCards(Players[currentName]);
+							RectangleShape aCard;
+							if(theGivenCard.getFace()){
+								if(theGivenCard.getSuit() == 0){
+									switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&ClubAce); break;
+									case 2: aCard.setTexture(&Club2); break;
+									case 3: aCard.setTexture(&Club3); break;
+									case 4: aCard.setTexture(&Club4); break;
+									case 5: aCard.setTexture(&Club5); break;
+									case 6: aCard.setTexture(&Club6); break;
+									case 7: aCard.setTexture(&Club7); break;
+									case 8: aCard.setTexture(&Club8); break;
+									case 9: aCard.setTexture(&Club9); break;
+									case 10: aCard.setTexture(&Club10); break;
+									case 11: aCard.setTexture(&ClubJack); break;
+									case 12: aCard.setTexture(&ClubQueen); break;
+									case 13: aCard.setTexture(&ClubKing); break;
+								}
+							}
+							if(theGivenCard.getSuit() == 1){
+								switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&DiamondAce); break;
+									case 2: aCard.setTexture(&Diamond2); break;
+									case 3: aCard.setTexture(&Diamond3); break;
+									case 4: aCard.setTexture(&Diamond4); break;
+									case 5: aCard.setTexture(&Diamond5); break;
+									case 6: aCard.setTexture(&Diamond6); break;
+									case 7: aCard.setTexture(&Diamond7); break;
+									case 8: aCard.setTexture(&Diamond8); break;
+									case 9: aCard.setTexture(&Diamond9); break;
+									case 10: aCard.setTexture(&Diamond10); break;
+									case 11: aCard.setTexture(&DiamondJack); break;
+									case 12: aCard.setTexture(&DiamondQueen); break;
+									case 13: aCard.setTexture(&DiamondKing); break;
+								}
+							}
+							if(theGivenCard.getSuit() == 2){
+								switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&HeartAce); break;
+									case 2: aCard.setTexture(&Heart2); break;
+									case 3: aCard.setTexture(&Heart3); break;
+									case 4: aCard.setTexture(&Heart4); break;
+									case 5: aCard.setTexture(&Heart5); break;
+									case 6: aCard.setTexture(&Heart6); break;
+									case 7: aCard.setTexture(&Heart7); break;
+									case 8: aCard.setTexture(&Heart8); break;
+									case 9: aCard.setTexture(&Heart9); break;
+									case 10: aCard.setTexture(&Heart10); break;
+									case 11: aCard.setTexture(&HeartJack); break;
+									case 12: aCard.setTexture(&HeartQueen); break;
+									case 13: aCard.setTexture(&HeartKing); break;
+								}
+							}
+							if(theGivenCard.getSuit() == 3){
+								switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&SpadeAce); break;
+									case 2: aCard.setTexture(&Spade2); break;
+									case 3: aCard.setTexture(&Spade3); break;
+									case 4: aCard.setTexture(&Spade4); break;
+									case 5: aCard.setTexture(&Spade5); break;
+									case 6: aCard.setTexture(&Spade6); break;
+									case 7: aCard.setTexture(&Spade7); break;
+									case 8: aCard.setTexture(&Spade8); break;
+									case 9: aCard.setTexture(&Spade9); break;
+									case 10: aCard.setTexture(&Spade10); break;
+									case 11: aCard.setTexture(&SpadeJack); break;
+									case 12: aCard.setTexture(&SpadeQueen); break;
+									case 13: aCard.setTexture(&SpadeKing); break;
+								}
+							}
+							}else{
+								aCard.setTexture(&facedown);
+							}
+							aCard.setSize(Vector2f(120, 180));
+							aCard.setPosition(handpose, Hy);
+							handCards.push_back(aCard);
+							takeS.play();
+							handpose += hInterval;
+							givingCards = false;				
+						}
+						else
+						if(dont_stop){
+							outgame:
+							Text str;
+							std::ostringstream Score;
+							Score << (Players[currentName].getTotal());
+							str.setFillColor(Color::White);
+							str.setPosition(tableX, posT);
+							str.setFont(font);
+							str.setCharacterSize(50);
+							str.setStyle(Text::Bold);
+							str.setString(names[currentName] + " " + Score.str()) ;
+							if(Players[currentName].getTotal() > 21){
+								str.setString(str.getString() + " (busted)");
+							}
+							Table.push_back(str);
+							posT += tInterval;
+							currentName++;
+							handCards.clear();
+							handpose = bHx + 2*hInterval;
+						if(currentName < numPlayers){
+								Name.setString(names[currentName]);
+								handCards.push_back(dealCards[currentName][0]);
+								handCards.push_back(dealCards[currentName][1]);
+								offerHit = true;
+							}
+							else{
+								houseTurn = true;
+								offerHit = false;
+								HouseName.setPosition(Name.getPosition());
+								houseCards[0].setPosition(bHx, Hy);
+								//theHouse.FlipFirstCard();
+								if(theFirstHouse.getFace()){
+								if(theFirstHouse.getSuit() == 0){
+									switch(theFirstHouse.getRank()){
+									case 1: houseCards[0].setTexture(&ClubAce); break;
+									case 2: houseCards[0].setTexture(&Club2); break;
+									case 3: houseCards[0].setTexture(&Club3); break;
+									case 4: houseCards[0].setTexture(&Club4); break;
+									case 5: houseCards[0].setTexture(&Club5); break;
+									case 6: houseCards[0].setTexture(&Club6); break;
+									case 7: houseCards[0].setTexture(&Club7); break;
+									case 8: houseCards[0].setTexture(&Club8); break;
+									case 9: houseCards[0].setTexture(&Club9); break;
+									case 10: houseCards[0].setTexture(&Club10); break;
+									case 11: houseCards[0].setTexture(&ClubJack); break;
+									case 12: houseCards[0].setTexture(&ClubQueen); break;
+									case 13: houseCards[0].setTexture(&ClubKing); break;
+								}
+							}
+							if(theFirstHouse.getSuit() == 1){
+								switch(theFirstHouse.getRank()){
+									case 1: houseCards[0].setTexture(&DiamondAce); break;
+									case 2: houseCards[0].setTexture(&Diamond2); break;
+									case 3: houseCards[0].setTexture(&Diamond3); break;
+									case 4: houseCards[0].setTexture(&Diamond4); break;
+									case 5: houseCards[0].setTexture(&Diamond5); break;
+									case 6: houseCards[0].setTexture(&Diamond6); break;
+									case 7: houseCards[0].setTexture(&Diamond7); break;
+									case 8: houseCards[0].setTexture(&Diamond8); break;
+									case 9: houseCards[0].setTexture(&Diamond9); break;
+									case 10: houseCards[0].setTexture(&Diamond10); break;
+									case 11: houseCards[0].setTexture(&DiamondJack); break;
+									case 12: houseCards[0].setTexture(&DiamondQueen); break;
+									case 13: houseCards[0].setTexture(&DiamondKing); break;
+								}
+							}
+							if(theFirstHouse.getSuit() == 2){
+								switch(theFirstHouse.getRank()){
+									case 1: houseCards[0].setTexture(&HeartAce); break;
+									case 2: houseCards[0].setTexture(&Heart2); break;
+									case 3: houseCards[0].setTexture(&Heart3); break;
+									case 4: houseCards[0].setTexture(&Heart4); break;
+									case 5: houseCards[0].setTexture(&Heart5); break;
+									case 6: houseCards[0].setTexture(&Heart6); break;
+									case 7: houseCards[0].setTexture(&Heart7); break;
+									case 8: houseCards[0].setTexture(&Heart8); break;
+									case 9: houseCards[0].setTexture(&Heart9); break;
+									case 10: houseCards[0].setTexture(&Heart10); break;
+									case 11: houseCards[0].setTexture(&HeartJack); break;
+									case 12: houseCards[0].setTexture(&HeartQueen); break;
+									case 13: houseCards[0].setTexture(&HeartKing); break;
+								}
+							}
+							if(theFirstHouse.getSuit() == 3){
+								switch(theFirstHouse.getRank()){
+									case 1: houseCards[0].setTexture(&SpadeAce); break;
+									case 2: houseCards[0].setTexture(&Spade2); break;
+									case 3: houseCards[0].setTexture(&Spade3); break;
+									case 4: houseCards[0].setTexture(&Spade4); break;
+									case 5: houseCards[0].setTexture(&Spade5); break;
+									case 6: houseCards[0].setTexture(&Spade6); break;
+									case 7: houseCards[0].setTexture(&Spade7); break;
+									case 8: houseCards[0].setTexture(&Spade8); break;
+									case 9: houseCards[0].setTexture(&Spade9); break;
+									case 10: houseCards[0].setTexture(&Spade10); break;
+									case 11: houseCards[0].setTexture(&SpadeJack); break;
+									case 12: houseCards[0].setTexture(&SpadeQueen); break;
+									case 13: houseCards[0].setTexture(&SpadeKing); break;
+								}
+							}					
+							}
+							houseCards[1].setPosition(bHx+hInterval, Hy);
+						}	
+						playerBusted = false;
+					}
+				}	
+        	}
+}
+			if(writingNames){
+        			if(!digitAdded){
+						std::ostringstream nameNumStr;
+						nameNumStr << (currentName + 1);
+						nameOffer.setString(nameOffer.getString() + nameNumStr.str());
+						digitAdded = true;
+					}
+		}
+				
+			if (event.type == sf::Event::TextEntered) 
+    		{
+      			if (event.text.unicode < 128) 
+      			{
+        			drawningString += static_cast<char>(event.text.unicode); 
+        			Name.setString(drawningString); 
+      			}
+    		}
+    	}
+	
+        window.clear();
+        
+        if(choosingNum){
+			window.draw(title);
+			window.draw(choseOffer);
+			window.draw(one);
+			window.draw(two);
+			window.draw(three);
+			window.draw(four);
+			window.draw(five);
+			window.draw(six);
+			window.draw(seven);
+			}
+			
+		if(writingNames){
+			window.draw(nameOffer);
+			window.draw(Name);
+			window.draw(line, 2, sf::Lines);
+			window.draw(nameAccept);
+			window.draw(nameClear);
+		}
+		
+		if(gaming){
+			if(!Initialized){
+				vector<string>::iterator pName;
+				for (pName = names.begin(); pName != names.end(); ++pName)
+				{
+				    Players.push_back(Player(*pName));
+				}
+				
+				for(int i = 0; i <= numPlayers; ++i){
+					vector<RectangleShape> deal;
+					dealCards.push_back(deal);
+				}
+				Initialized = true;
+				dealing = true;
+				giveS.play();
+			}
+			
+			if(dealing){
+				for(int i = 0; i < 2; i++){
+					if(dealed >= numPlayers){
+							theDeck.Deal(theHouse);
+							if( (theGivenCard.getRank() > 1) && (theGivenCard.getRank() < 11))
+							{
+								hc += theGivenCard.getRank();
+							}
+							else 
+							if(theGivenCard.getRank() == 1)
+								{
+									if(hc + 11 > 21){
+										hc += 1;
+									}else{
+										hc += 11;
+									}
+							}else
+							if(theGivenCard.getRank() >= 11)
+									{
+										hc += 10;
+								}
+				
+						if(i == 0){
+							theHouse.FlipFirstCard();
+						}
+					}else{
+						theDeck.Deal(Players[dealed]);
+					}
+					RectangleShape aCard;
+					if(theGivenCard.getFace()){
+						if(theGivenCard.getSuit() == 0){
+							switch(theGivenCard.getRank()){
+							case 1: aCard.setTexture(&ClubAce); break;
+							case 2: aCard.setTexture(&Club2); break;
+							case 3: aCard.setTexture(&Club3); break;
+							case 4: aCard.setTexture(&Club4); break;
+							case 5: aCard.setTexture(&Club5); break;
+							case 6: aCard.setTexture(&Club6); break;
+							case 7: aCard.setTexture(&Club7); break;
+							case 8: aCard.setTexture(&Club8); break;
+							case 9: aCard.setTexture(&Club9); break;
+							case 10: aCard.setTexture(&Club10); break;
+							case 11: aCard.setTexture(&ClubJack); break;
+							case 12: aCard.setTexture(&ClubQueen); break;
+							case 13: aCard.setTexture(&ClubKing); break;
+						}
+					}
+					if(theGivenCard.getSuit() == 1){
+						switch(theGivenCard.getRank()){
+							case 1: aCard.setTexture(&DiamondAce); break;
+							case 2: aCard.setTexture(&Diamond2); break;
+							case 3: aCard.setTexture(&Diamond3); break;
+							case 4: aCard.setTexture(&Diamond4); break;
+							case 5: aCard.setTexture(&Diamond5); break;
+							case 6: aCard.setTexture(&Diamond6); break;
+							case 7: aCard.setTexture(&Diamond7); break;
+							case 8: aCard.setTexture(&Diamond8); break;
+							case 9: aCard.setTexture(&Diamond9); break;
+							case 10: aCard.setTexture(&Diamond10); break;
+							case 11: aCard.setTexture(&DiamondJack); break;
+							case 12: aCard.setTexture(&DiamondQueen); break;
+							case 13: aCard.setTexture(&DiamondKing); break;
+						}
+					}
+					if(theGivenCard.getSuit() == 2){
+						switch(theGivenCard.getRank()){
+							case 1: aCard.setTexture(&HeartAce); break;
+							case 2: aCard.setTexture(&Heart2); break;
+							case 3: aCard.setTexture(&Heart3); break;
+							case 4: aCard.setTexture(&Heart4); break;
+							case 5: aCard.setTexture(&Heart5); break;
+							case 6: aCard.setTexture(&Heart6); break;
+							case 7: aCard.setTexture(&Heart7); break;
+							case 8: aCard.setTexture(&Heart8); break;
+							case 9: aCard.setTexture(&Heart9); break;
+							case 10: aCard.setTexture(&Heart10); break;
+							case 11: aCard.setTexture(&HeartJack); break;
+							case 12: aCard.setTexture(&HeartQueen); break;
+							case 13: aCard.setTexture(&HeartKing); break;
+						}
+					}
+					if(theGivenCard.getSuit() == 3){
+						switch(theGivenCard.getRank()){
+							case 1: aCard.setTexture(&SpadeAce); break;
+							case 2: aCard.setTexture(&Spade2); break;
+							case 3: aCard.setTexture(&Spade3); break;
+							case 4: aCard.setTexture(&Spade4); break;
+							case 5: aCard.setTexture(&Spade5); break;
+							case 6: aCard.setTexture(&Spade6); break;
+							case 7: aCard.setTexture(&Spade7); break;
+							case 8: aCard.setTexture(&Spade8); break;
+							case 9: aCard.setTexture(&Spade9); break;
+							case 10: aCard.setTexture(&Spade10); break;
+							case 11: aCard.setTexture(&SpadeJack); break;
+							case 12: aCard.setTexture(&SpadeQueen); break;
+							case 13: aCard.setTexture(&SpadeKing); break;
+						}
+					}
+					}else{
+						aCard.setTexture(&facedown);
+					}
+					aCard.setSize(Vector2f(120, 180));
+					if(dealed >= numPlayers){
+						aCard.setPosition(xbHo + hInterval*i, yHo);
+						houseCards.push_back(aCard);
+					}else{
+						aCard.setPosition(handpose, Hy);
+						dealCards[dealed].push_back(aCard);
+					}
+					handpose += hInterval;	
+				}
+				dealed++;
+				handpose = bHx;
+				if(dealed >= numPlayers+1){
+					dealing = false;
+					begin = true;
+					for(int i = 0; i < 2; ++i){
+						handCards.push_back(dealCards[0][i]);
+					}
+					handpose = bHx + 2*hInterval;
+					offerHit = true;
+				}
+			}
+			
+			window.draw(backgroundSprite);
+			window.draw(HAND);
+			if(!houseTurn){
+				window.draw(HOUSE);
+				window.draw(Name);
+			}
+			
+			window.draw(HouseName);
+			
+			if(offerHit){
+				window.draw(Hit);
+				window.draw(Dont);
+			}
+			
+			if(deckHas){
+				window.draw(DECK);
+			}
+			
+			vector<RectangleShape>::const_iterator pShape;
+			for (pShape = handCards.begin(); pShape != handCards.end(); ++pShape)
+			{
+				window.draw(*pShape);
+			}
+			
+			vector<RectangleShape>::const_iterator hShape;
+			for (hShape = houseCards.begin(); hShape != houseCards.end(); ++hShape)
+			{
+				window.draw(*hShape);
+			}
+			
+			vector<Text>::const_iterator pTable;
+			for (pTable = Table.begin(); pTable != Table.end(); ++pTable)
+			{
+				window.draw(*pTable);
+			}
+			
+			if(!playerBusted && !houseTurn){
+				offerHit = true;
+			}else{
+				if(playerBusted){
+					goto outgame;	
+				}
+			}
+			
+			if(houseTurn && !gameover){
+				if(hc <= 16){
+				theDeck.AdditionalCards(theHouse);
+				hc += theGivenCard.getRank();
+				RectangleShape aCard;
+							if(theGivenCard.getFace()){
+								if(theGivenCard.getSuit() == 0){
+									switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&ClubAce); break;
+									case 2: aCard.setTexture(&Club2); break;
+									case 3: aCard.setTexture(&Club3); break;
+									case 4: aCard.setTexture(&Club4); break;
+									case 5: aCard.setTexture(&Club5); break;
+									case 6: aCard.setTexture(&Club6); break;
+									case 7: aCard.setTexture(&Club7); break;
+									case 8: aCard.setTexture(&Club8); break;
+									case 9: aCard.setTexture(&Club9); break;
+									case 10: aCard.setTexture(&Club10); break;
+									case 11: aCard.setTexture(&ClubJack); break;
+									case 12: aCard.setTexture(&ClubQueen); break;
+									case 13: aCard.setTexture(&ClubKing); break;
+								}
+							}
+							if(theGivenCard.getSuit() == 1){
+								switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&DiamondAce); break;
+									case 2: aCard.setTexture(&Diamond2); break;
+									case 3: aCard.setTexture(&Diamond3); break;
+									case 4: aCard.setTexture(&Diamond4); break;
+									case 5: aCard.setTexture(&Diamond5); break;
+									case 6: aCard.setTexture(&Diamond6); break;
+									case 7: aCard.setTexture(&Diamond7); break;
+									case 8: aCard.setTexture(&Diamond8); break;
+									case 9: aCard.setTexture(&Diamond9); break;
+									case 10: aCard.setTexture(&Diamond10); break;
+									case 11: aCard.setTexture(&DiamondJack); break;
+									case 12: aCard.setTexture(&DiamondQueen); break;
+									case 13: aCard.setTexture(&DiamondKing); break;
+								}
+							}
+							if(theGivenCard.getSuit() == 2){
+								switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&HeartAce); break;
+									case 2: aCard.setTexture(&Heart2); break;
+									case 3: aCard.setTexture(&Heart3); break;
+									case 4: aCard.setTexture(&Heart4); break;
+									case 5: aCard.setTexture(&Heart5); break;
+									case 6: aCard.setTexture(&Heart6); break;
+									case 7: aCard.setTexture(&Heart7); break;
+									case 8: aCard.setTexture(&Heart8); break;
+									case 9: aCard.setTexture(&Heart9); break;
+									case 10: aCard.setTexture(&Heart10); break;
+									case 11: aCard.setTexture(&HeartJack); break;
+									case 12: aCard.setTexture(&HeartQueen); break;
+									case 13: aCard.setTexture(&HeartKing); break;
+								}
+							}
+							if(theGivenCard.getSuit() == 3){
+								switch(theGivenCard.getRank()){
+									case 1: aCard.setTexture(&SpadeAce); break;
+									case 2: aCard.setTexture(&Spade2); break;
+									case 3: aCard.setTexture(&Spade3); break;
+									case 4: aCard.setTexture(&Spade4); break;
+									case 5: aCard.setTexture(&Spade5); break;
+									case 6: aCard.setTexture(&Spade6); break;
+									case 7: aCard.setTexture(&Spade7); break;
+									case 8: aCard.setTexture(&Spade8); break;
+									case 9: aCard.setTexture(&Spade9); break;
+									case 10: aCard.setTexture(&Spade10); break;
+									case 11: aCard.setTexture(&SpadeJack); break;
+									case 12: aCard.setTexture(&SpadeQueen); break;
+									case 13: aCard.setTexture(&SpadeKing); break;
+								}
+							}
+							}else{
+								aCard.setTexture(&facedown);
+							}
+							aCard.setSize(Vector2f(120, 180));
+							aCard.setPosition(handpose, Hy);
+							houseCards.push_back(aCard);
+							takeS.play();
+							handpose += hInterval;
+						}
+				if(!(hc <= 16) || (hc > 21)){
+					Text hou;
+				    hou.setString("House");
+				    hou.setFillColor(Color::White);
+				    hou.setCharacterSize(50);
+					hou.setPosition(tableX, posT);
+					hou.setFont(font);
+					hou.setStyle(Text::Bold);
+					std::ostringstream ScoreH;
+					ScoreH << (hc);
+					hou.setString(hou.getString() + " " + ScoreH.str());
+					Table.push_back(hou);
+				    if ((hc > 21))
+    					{
+    						int fcount = 0;
+    						vector<Player>::const_iterator pPlayer;
+        					for (pPlayer = Players.begin(); pPlayer != Players.end(); ++pPlayer)
+        					{
+            				if (!(pPlayer->IsBusted()))
+            					{
+//                					pPlayer->Win();
+                					Table[fcount].setString(Table[fcount].getString() + " win");
+            					}
+            				fcount++;
+        					}
+        					Table[fcount].setString(Table[fcount].getString() + " (busted)");
+    					}
+    					else
+   						{
+   							int scount = 0;
+   							vector<Player>::const_iterator pPlayer;
+        					for (pPlayer = Players.begin(); pPlayer != Players.end(); ++pPlayer)
+        					{
+            					if (!(pPlayer->IsBusted()))
+            						{
+                						if (pPlayer->getTotal() > hc)
+                						{
+//                    						pPlayer->Win();
+											Table[scount].setString(Table[scount].getString() + " win");
+               							}
+                						else if (pPlayer->getTotal() < hc)
+                						{
+                    					//pPlayer->Lose();
+                    					Table[scount].setString(Table[scount].getString() + " lose");
+                						}
+                						else
+                						{
+                    						//pPlayer->Push();
+                    						Table[scount].setString(Table[scount].getString() + " push");
+                						}
+            						}
+            					scount++;
+        					}
+    					}
+    					int count = 0;
+    					vector<Player>::iterator pPlayer;
+    					for (pPlayer = Players.begin(); pPlayer != Players.end(); ++pPlayer)
+    					{
+        					pPlayer->Clear();
+    					}
+    					theHouse.Clear();
+    					gameover = true;
+						}
+    			}
+    		}
+	
+	window.display();
+}
+    return 0;
+}
